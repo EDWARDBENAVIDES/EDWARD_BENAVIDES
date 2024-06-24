@@ -1,0 +1,260 @@
+﻿@page "/weather"
+@using System.Text.Json
+@inject HttpClient Http
+@inject IJSRuntime JS
+<PageTitle>Listado Tareas</PageTitle>
+
+<h1>Listar Tareas</h1>
+
+@if (tareas == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Acciones</th>
+               
+                <th>Título</th>
+                <th>Descripción</th>
+                <th>Fecha de Creación</th>
+                <th>Fecha de Vencimiento</th>
+                <th>Completada</th>
+                <th>Usuario</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var tarea in tareas)
+            {
+                <tr>
+                    <td>@tarea.Id</td>
+                    <button @onclick="() => EliminarTarea(tarea.Id)">
+                        <i class="fas fa-trash-alt"></i> 
+                    </button>
+                    <button type="button" data-bs-toggle="modal" data-bs-target="#modalEditar" @onclick="() => AbrirModalEditar(tarea)">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
+                   
+                    <td>@tarea.Titulo</td>
+                    <td>@tarea.Descripcion</td>
+                    <td>@tarea.FechaCreacion.ToString("dd/MM/yyyy")</td>
+                    <td>@tarea.FechaVencimiento.ToString("dd/MM/yyyy")</td>
+                    <td>@tarea.Completada</td>
+                    <td>@tarea.Usuario</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+
+
+    <div class="modal fade" id="modalEditar" tabindex="-1" aria-labelledby="modalEditarLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalEditarLabel">Editar Tarea</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                     <div class="mb-3">
+                <label for="titulo" class="form-label">Título</label>
+                <input type="text" id="titulo" class="form-control" @bind="tarea.Titulo" />
+                </div>
+                     <div class="mb-3">
+                <label for="descripcion" class="form-label">Descripción</label>
+                <input type="text" id="descripcion" class="form-control" @bind="tarea.Descripcion" />
+                </div>
+               <div class="mb-3">
+                <label for="fechaVencimiento" class="form-label">Fecha de Vencimiento</label>
+                <input type="date" id="fechaVencimiento" class="form-control" @bind="tarea.FechaVencimiento" />
+                </div>
+                
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="GuardarCambios">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+
+
+
+
+
+@code {
+    private List<Tarea>? tareas;
+    private Tarea tarea = new Tarea();
+
+    protected override async Task OnInitializedAsync()
+    {
+   
+        var response = await Http.GetFromJsonAsync<Respuesta>("https://localhost:7001/tarea/ConsultarTarea/?_id=0");
+        if (response != null && response.Codigo == 0)
+        {
+            tareas = response.Objeto;
+        }
+    }
+
+    private void AbrirModalEditar(Tarea tareaSeleccionada)
+    {
+        tarea = tareaSeleccionada;
+ 
+       
+    }
+
+   
+    private async Task GuardarCambios()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(tarea.Titulo) || string.IsNullOrWhiteSpace(tarea.Descripcion))
+            {
+                await jsRuntime.InvokeVoidAsync("Swal.fire", "Atención", "No puede ingresar campos vacios", "error");
+
+                return;
+            }
+
+            var response = await Http.PostAsJsonAsync("https://localhost:7001/tarea/ActualizarTarea", tarea);
+            if (response.IsSuccessStatusCode)
+            {
+
+                Console.WriteLine("Tarea editada con éxito");
+                await ShowAlertSuccessEditar();
+                await CargarTareas();
+                await JS.InvokeVoidAsync("bootstrapModal.hide", "modalEditar");
+            }
+            else
+            {
+
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Error al editar la tarea: {errorContent}");
+                await ShowAlertErrorEditar();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+   
+
+    private async Task<bool> EliminarTarea(long tareaId)
+    {
+        try
+        {
+            var url = $"https://localhost:7001/tarea/EliminarTarea?_id={tareaId}";
+            var response = await Http.PostAsync(url, null);
+
+            Console.WriteLine($"Response status code: {response.StatusCode}");
+
+ 
+            response.EnsureSuccessStatusCode();
+
+            var responseBodyString = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"Response body (raw): {responseBodyString}");
+
+
+            var responseBody = JsonSerializer.Deserialize<Dictionary<string, object>>(responseBodyString);
+
+            Console.WriteLine($"Response body (deserialized): {JsonSerializer.Serialize(responseBody)}");
+
+            if (responseBody.ContainsKey("estado") && responseBody["estado"].ToString() == "OK")
+            {
+                Console.WriteLine("Tarea eliminada con éxito.");
+                await ShowAlertSuccess();
+                await CargarTareas();
+                return true;
+            }
+            else
+            {
+                Console.WriteLine("No se pudo eliminar la tarea.");
+                await ShowAlertError();
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al eliminar la tarea: {ex.Message}");
+            return false;
+        }
+    }
+      
+    private async Task CargarTareas()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<Respuesta>("https://localhost:7001/tarea/ConsultarTarea/?_id=0");
+            if (response != null && response.Codigo == 0)
+            {
+                tareas = response.Objeto;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar las tareas: {ex.Message}");
+        }
+    }
+
+    public class Tarea
+    {
+        public long Id { get; set; }
+        public string Titulo { get; set; }
+        public string Descripcion { get; set; }
+        public DateTime FechaCreacion { get; set; }
+        public DateTime FechaVencimiento { get; set; }
+        public bool Completada { get; set; }
+        public string Usuario { get; set; }
+    }
+
+    public class Respuesta
+    {
+        public int Codigo { get; set; }
+        public string Estado { get; set; }
+        public string Descripcion { get; set; }
+        public List<Tarea> Objeto { get; set; }
+    }
+
+
+
+
+
+    [Inject]
+    private IJSRuntime jsRuntime { get; set; }
+
+    private async Task ShowAlertSuccess()
+    {
+
+       
+        await jsRuntime.InvokeVoidAsync("Swal.fire", "Buen trabajo", "Se elimino con éxito la tarea", "success");
+    }
+
+    private async Task ShowAlertError()
+    {
+
+
+        await jsRuntime.InvokeVoidAsync("Swal.fire", "Atención!", "Existe un error al eliminar la tarea", "error");
+    }
+    private async Task ShowAlertErrorEditar()
+    {
+
+
+        await jsRuntime.InvokeVoidAsync("Swal.fire", "Atención!", "se produjo un error al editar la tarea", "error");
+    }
+
+    private async Task ShowAlertSuccessEditar()
+    {
+
+
+        await jsRuntime.InvokeVoidAsync("Swal.fire", "Buen trabajo", "Se editó con éxito la tarea", "success");
+    }
+    
+
+    
+}

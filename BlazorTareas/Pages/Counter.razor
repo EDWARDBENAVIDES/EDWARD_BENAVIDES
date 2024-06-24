@@ -1,0 +1,119 @@
+﻿@page "/counter"
+@inject IJSRuntime JS
+@inject HttpClient Http
+
+<PageTitle>Counter</PageTitle>
+
+<h1>Crear Tarea</h1>
+
+<EditForm Model="@tarea" OnValidSubmit="@CrearTarea">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-3">
+        <label for="titulo" class="form-label">Título</label>
+        <InputText id="titulo" class="form-control" @bind-Value="tarea.Titulo" />
+    </div>
+    <div class="mb-3">
+        <label for="descripcion" class="form-label">Descripción</label>
+        <InputText id="descripcion" class="form-control" @bind-Value="tarea.Descripcion" />
+    </div>
+    <div class="mb-3">
+        <label for="fechaVencimiento" class="form-label">Fecha de Vencimiento</label>
+        <InputDate id="fechaVencimiento" class="form-control" @bind-Value="tarea.FechaVencimiento" />
+    </div>
+
+    <button type="submit" class="btn btn-primary">Crear Tarea</button>
+</EditForm>
+
+
+
+@code {
+
+    private Tarea tarea = new Tarea { FechaVencimiento = DateTime.Now.AddDays(1) };
+
+    private async Task CrearTarea()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(tarea.Titulo) || string.IsNullOrWhiteSpace(tarea.Descripcion))
+            {
+                await jsRuntime.InvokeVoidAsync("Swal.fire", "Atención", "No puede ingresar campos vacios", "error");
+
+                return;
+            }
+
+
+            var response = await Http.PostAsJsonAsync("https://localhost:7001/tarea/CrearTarea", tarea);
+            if (response.IsSuccessStatusCode)
+            {
+       
+                Console.WriteLine("Tarea creada con éxito");
+                await LimpiarCampos();
+            }
+            else
+            {
+           
+                await ShowAlertSuccess();
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Error al crear la tarea: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task LimpiarCampos()
+    {
+
+
+        tarea.Titulo = string.Empty;
+        tarea.Descripcion = string.Empty;
+        tarea.FechaVencimiento = DateTime.Now;
+
+
+        await ShowAlertSuccess();
+    }
+
+    private async Task ShowAlertSuccess()
+    {
+        
+        
+        await jsRuntime.InvokeVoidAsync("Swal.fire", "Buen Trabajo", "Se creó la tarea con éxito", "success");
+    }
+
+    private async Task ShowAlertError()
+    {
+
+  
+        await jsRuntime.InvokeVoidAsync("Swal.fire", "Atención", "Exite un problema al crear la tarea", "error");
+    }
+
+    [Inject]
+    private IJSRuntime? jsRuntime { get; set; }
+    
+    
+
+
+    public class Tarea
+    {
+        public Int64 Id { get; set; }
+        public String? Titulo { get; set; }
+        public String? Descripcion { get; set; }
+        public DateTime FechaCreacion { get; set; } = DateTime.Now;
+        public DateTime FechaVencimiento { get; set; }
+        public Boolean Completada { get; set; }
+        public Int32 UsuarioCreacion { get; set; }
+        public String? Usuario { get; set; }
+    }
+
+    public class Respuesta
+    {
+        public int Codigo { get; set; }
+        public string? Estado { get; set; }
+        public string? Descripcion { get; set; }
+        public List<Tarea>? Objeto { get; set; }
+    }
+}
